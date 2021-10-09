@@ -1,6 +1,7 @@
 data class RuntimeError(val token: Token, override val message: String) : RuntimeException(message)
+data class ReturnException(val returnValue: LoxValue) : RuntimeException()
 
-sealed class LoxValue {
+abstract class LoxValue {
     fun typeName() = this::class.simpleName?.substring(3)
 }
 
@@ -29,7 +30,66 @@ class LoxNil : LoxValue() {
     }
 }
 
+interface LoxCallable {
+    fun call(interpreter: Interpreter, args: List<LoxValue>): LoxValue
+    fun nArgs(): Int
+}
+
+class LoxFunction(private val declaration: FunctionDeclaration, private val closure: Environment) : LoxValue(),
+    LoxCallable {
+    override fun call(interpreter: Interpreter, args: List<LoxValue>): LoxValue {
+        val functionScope = Environment(closure)
+        declaration.params.forEachIndexed { index, token ->
+            functionScope.define(token.lexeme, args[index])
+        }
+        interpreter.visitBlock(declaration.body, functionScope)
+        return LoxNil()
+    }
+
+    override fun nArgs() = declaration.params.size
+
+    override fun toString() = "<fn ${declaration.name.lexeme}>"
+
+}
+
+class Environment(private val parent: Environment?) {
+    private val values = mutableMapOf<String, LoxValue>()
+
+    fun define(name: String, value: LoxValue) {
+        values[name] = value
+    }
+
+    fun get(name: String): LoxValue? =
+        values[name] ?: parent?.get(name)
+
+    fun assign(name: Token, value: LoxValue) {
+        if (values.containsKey(name.lexeme)) {
+            values[name.lexeme] = value
+        } else if (parent != null) {
+            parent.assign(name, value)
+        } else {
+            throw RuntimeError(name, "Assignment to undefined variable '${name.lexeme}'.")
+        }
+    }
+
+    constructor() : this(null)
+}
+
 class Interpreter {
+    private val globals = Environment()
+
+    init {
+        globals.define("clock", object : LoxValue(), LoxCallable {
+            override fun call(interpreter: Interpreter, args: List<LoxValue>) =
+                LoxNumber(System.currentTimeMillis().toDouble() / 1000.0)
+
+            override fun nArgs() = 0
+            override fun toString() = "<native fn clock>"
+        })
+    }
+
+    private var environment = globals
+
     fun interpret(statements: List<Stmt>) {
         for (statement in statements) {
             visitStatement(statement)
@@ -40,7 +100,56 @@ class Interpreter {
         when (statement) {
             is Expression -> visitExpr(statement.expr)
             is Print -> println(visitExpr(statement.expr))
+            is Var -> {
+                val value = if (statement.initializer != null) {
+                    visitExpr(statement.initializer)
+                } else {
+                    LoxNil()
+                }
+                environment.define(statement.name.lexeme, value)
+            }
+            is Block -> {
+                visitBlock(statement.statements, Environment(environment))
+            }
+            is If -> {
+                val predicate = visitExpr(statement.predicate)
+                if (isTruthy(predicate)) {
+                    visitStatement(statement.ifTrue)
+                } else if (statement.ifFalse != null) {
+                    visitStatement(statement.ifFalse)
+                }
+            }
+            is While -> {
+                while (isTruthy(visitExpr(statement.predicate))) {
+                    visitStatement(statement.body)
+                }
+            }
+            is FunctionDeclaration -> {
+                environment.define(statement.name.lexeme, LoxFunction(statement, environment))
+            }
+            is Return -> {
+                throw ReturnException(
+                    if (statement.value == null) {
+                        LoxNil()
+                    } else {
+                        visitExpr(statement.value)
+                    }
+                )
+            }
         }
+    }
+
+    internal fun visitBlock(statements: List<Stmt>, environment: Environment) {
+        val previous = this.environment
+        try {
+            this.environment = environment
+            for (statement in statements) {
+                visitStatement(statement)
+            }
+        } finally {
+            this.environment = previous
+        }
+
     }
 
     private fun visitExpr(expr: Expr): LoxValue {
@@ -153,6 +262,50 @@ class Interpreter {
                     TokenType.PLUS -> operand
                     TokenType.BANG -> LoxBoolean(!isTruthy(operand))
                     else -> throw RuntimeException("unimplemented unary operator: ${expr.operator.type}")
+                }
+            }
+            is Variable -> {
+                environment.get(expr.name.lexeme) ?: throw RuntimeError(
+                    expr.name,
+                    "Undefined variable '${expr.name.lexeme}'."
+                )
+            }
+            is Assign -> {
+                val value = visitExpr(expr.value)
+                environment.assign(expr.name, value)
+                value
+            }
+            is Logical -> {
+                val left = visitExpr(expr.left)
+                if (expr.operator.type == TokenType.OR && isTruthy(left)) {
+                    left
+                } else if (expr.operator.type == TokenType.AND && !isTruthy(left)) {
+                    left
+                } else {
+                    visitExpr(expr.right)
+                }
+            }
+            is CallExpr -> {
+                val callee = visitExpr(expr.callee)
+                if (callee !is LoxCallable) {
+                    throw RuntimeError(
+                        expr.closeParen,
+                        "Can only call functions and classes."
+                    )
+                }
+                if (expr.args.size != callee.nArgs()) {
+                    throw RuntimeError(
+                        expr.closeParen, "Expected " +
+                                callee.nArgs().toString() + " arguments but got " +
+                                expr.args.size.toString() + "."
+                    )
+                }
+                val args = expr.args.map(::visitExpr)
+                try {
+                    callee.call(this, args)
+                    return LoxNil()
+                } catch (returned: ReturnException) {
+                    returned.returnValue
                 }
             }
         }

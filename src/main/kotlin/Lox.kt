@@ -10,7 +10,7 @@ class Lox {
 
     // for debugging
     private val showTokens = false
-//    private val showAst = false
+    //  private val showAst = false
 
     fun runFile(filename: String) {
         val bytes = File(filename).readBytes()

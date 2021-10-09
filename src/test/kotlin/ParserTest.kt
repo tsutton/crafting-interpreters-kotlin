@@ -9,14 +9,14 @@ internal class ParserTest {
         assertEquals(
             Parser(textExpr1).expression(),
             Binary(
-                Literal(1.0),
+                Literal(LoxNumber(1.0)),
                 Token(TokenType.PLUS, "+", null, 1),
                 Binary(
-                    Literal(2.0),
+                    Literal(LoxNumber(2.0)),
                     Token(
                         TokenType.STAR, "*", null, 1
                     ),
-                    Literal(3.0),
+                    Literal(LoxNumber(3.0)),
                 )
             )
         )

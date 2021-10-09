@@ -7,11 +7,11 @@ internal class ExprSexpPrinterTest {
         val expr = Binary(
             Unary(
                 Token(TokenType.MINUS, "-", null, 1),
-                Literal(789)
+                Literal(LoxNumber(789.0))
             ),
             Token(TokenType.STAR, "*", null, 1),
-            Grouping(Literal(12.34))
+            Grouping(Literal(LoxNumber(12.34)))
         )
-        assertEquals(ExprSexpPrinter.visit(expr), "(* (- 789) (group 12.34))")
+        assertEquals(ExprSexpPrinter.visit(expr), "(* (- 789.0) (group 12.34))")
     }
 }
