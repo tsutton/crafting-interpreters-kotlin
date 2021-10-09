@@ -72,6 +72,19 @@ class Environment(private val parent: Environment?) {
         }
     }
 
+    private fun ancestor(depth: Int): Environment {
+        var ret = this
+        for (i in 1..depth) {
+            ret = ret.parent!! // yikes
+        }
+        return ret
+    }
+
+    fun getAt(depth: Int, name: Token) = ancestor(depth).values[name.lexeme]
+    fun assignAt(depth: Int, name: Token, value: LoxValue) {
+        ancestor(depth).values[name.lexeme] = value
+    }
+
     constructor() : this(null)
 }
 
@@ -265,14 +278,24 @@ class Interpreter {
                 }
             }
             is Variable -> {
-                environment.get(expr.name.lexeme) ?: throw RuntimeError(
-                    expr.name,
-                    "Undefined variable '${expr.name.lexeme}'."
-                )
+                val depth = expr.resolutionDepth
+                if (depth == null) {
+                    globals.get(expr.name.lexeme) ?: throw RuntimeError(
+                        expr.name,
+                        "Undefined variable '${expr.name.lexeme}'."
+                    )
+                } else {
+                    environment.getAt(depth, expr.name)!!
+                }
             }
             is Assign -> {
                 val value = visitExpr(expr.value)
-                environment.assign(expr.name, value)
+                val depth = expr.resolutionDepth
+                if (depth == null) {
+                    globals.assign(expr.name, value)
+                } else {
+                    environment.assignAt(depth, expr.name, value)
+                }
                 value
             }
             is Logical -> {

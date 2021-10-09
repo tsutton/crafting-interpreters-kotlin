@@ -54,6 +54,15 @@ class Lox {
                 return
             }
         }
+        val resolver = Resolver()
+        for (stmt in program) {
+            try {
+                resolver.visitStatement(stmt)
+            } catch (e: ResolutionError) {
+                error(e.line, e.message ?: "unknown resolution error")
+                return
+            }
+        }
         try {
             interpreter.interpret(program)
         } catch (e: RuntimeError) {
