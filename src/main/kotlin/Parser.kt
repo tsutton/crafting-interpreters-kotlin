@@ -15,7 +15,7 @@ sealed class ParseResult {
 // i.e. we can parse it with recursive descent without backtracking (with a fixed, finite number of look ahead).
 // And all the operators are left associate, so even though the grammar is ambiguous (a * b * c has two parse trees)
 // that's ok.
-// As such, from any given state, we use lookahead to decide which nonterminal is upcoming, and parse exactly that one.
+// As such, from any given state, we use lookahead to decide which non-terminal is upcoming, and parse exactly that one.
 class Parser(private val tokens: List<Token>) {
     private var current = 0
 
@@ -37,6 +37,7 @@ class Parser(private val tokens: List<Token>) {
             when {
                 match(TokenType.VAR) -> varDeclaration()
                 match(TokenType.FUN) -> functionDeclaration("function")
+                match(TokenType.CLASS) -> classDeclaration()
                 else -> statement()
             }
 
@@ -46,7 +47,18 @@ class Parser(private val tokens: List<Token>) {
         }
     }
 
-    private fun functionDeclaration(kind: String): Stmt {
+    private fun classDeclaration(): ClassStatement {
+        val name = consume(TokenType.IDENTIFIER, "expecting identifier after keyword 'class'")
+        consume(TokenType.LEFT_BRACE, "expecting '{' after class name")
+        val methods = mutableListOf<FunctionDeclaration>()
+        while (!check(TokenType.RIGHT_BRACE) && !isAtEnd()) {
+            methods.add(functionDeclaration("method"))
+        }
+        consume(TokenType.RIGHT_BRACE, "expecting '}' at end of class")
+        return ClassStatement(name, methods)
+    }
+
+    private fun functionDeclaration(kind: String): FunctionDeclaration {
         val name = consume(TokenType.IDENTIFIER, "Expect $kind name.")
         consume(TokenType.LEFT_PAREN, "Expect '(' after $kind name.")
         val parameters = mutableListOf<Token>()
@@ -79,7 +91,7 @@ class Parser(private val tokens: List<Token>) {
         }
     }
 
-    private fun returnStatement(): Stmt {
+    private fun returnStatement(): Return {
         val keyword = previous()
         val value = if (!check(TokenType.SEMICOLON)) {
             expression()
@@ -90,7 +102,7 @@ class Parser(private val tokens: List<Token>) {
         return Return(keyword, value)
     }
 
-    private fun whileStatement(): Stmt {
+    private fun whileStatement(): While {
         consume(TokenType.LEFT_PAREN, "Expect '(' after 'while'")
         val predicate = expression()
         consume(TokenType.RIGHT_PAREN, "Expect ')' after 'while' predicate")
@@ -148,7 +160,7 @@ class Parser(private val tokens: List<Token>) {
         return statements
     }
 
-    private fun ifStatement(): Stmt {
+    private fun ifStatement(): If {
         consume(TokenType.LEFT_PAREN, "Expect '(' after 'if'.")
         val condition = expression()
         consume(TokenType.RIGHT_PAREN, "Expect ')' after if condition.")
@@ -217,10 +229,10 @@ class Parser(private val tokens: List<Token>) {
         return if (match(TokenType.EQUAL)) {
             val equalsToken = previous()
             val value = assignment()
-            if (expr is Variable) {
-                Assign(expr.name, value)
-            } else {
-                throw ParseError(equalsToken, "Cannot assign to this left side of equals")
+            when (expr) {
+                is Variable -> Assign(expr.name, value)
+                is GetExpr -> SetExpr(expr.base, expr.getter, value)
+                else -> throw ParseError(equalsToken, "Cannot assign to this left side of equals")
             }
         } else {
             expr
@@ -276,8 +288,17 @@ class Parser(private val tokens: List<Token>) {
 
     private fun call(): Expr {
         var expr = primary()
-        while (match(TokenType.LEFT_PAREN)) {
-            expr = extendCall(expr)
+        while (true) {
+            if (match(TokenType.LEFT_PAREN)) {
+                expr = extendCall(expr)
+            } else if (match(TokenType.DOT)) {
+                expr = GetExpr(
+                    expr,
+                    consume(TokenType.IDENTIFIER, "expecting identifier for property access after '.'")
+                )
+            } else {
+                break
+            }
         }
         return expr
     }
@@ -305,6 +326,7 @@ class Parser(private val tokens: List<Token>) {
         if (match(TokenType.FALSE)) return Literal(LoxBoolean(false))
         if (match(TokenType.TRUE)) return Literal(LoxBoolean(true))
         if (match(TokenType.NIL)) return Literal(LoxNil())
+        if (match(TokenType.THIS)) return This(previous())
 
         if (match(TokenType.NUMBER, TokenType.STRING)) {
             return if (previous().type == TokenType.NUMBER) {

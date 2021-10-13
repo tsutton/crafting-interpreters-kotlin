@@ -1,57 +1,6 @@
 data class RuntimeError(val token: Token, override val message: String) : RuntimeException(message)
 data class ReturnException(val returnValue: LoxValue) : RuntimeException()
 
-abstract class LoxValue {
-    fun typeName() = this::class.simpleName?.substring(3)
-}
-
-data class LoxBoolean(val value: Boolean) : LoxValue() {
-    override fun toString() = value.toString()
-}
-
-data class LoxNumber(val value: Double) : LoxValue() {
-    operator fun plus(other: LoxNumber) = LoxNumber(value + other.value)
-    override fun toString() = value.toString()
-
-}
-
-data class LoxString(val value: String) : LoxValue() {
-    operator fun plus(other: LoxString) = LoxString(value + other.value)
-    override fun toString() = value
-}
-
-class LoxNil : LoxValue() {
-    override fun toString() = "nil"
-
-    override fun equals(other: Any?) = other is LoxNil
-
-    override fun hashCode(): Int {
-        return System.identityHashCode(this)
-    }
-}
-
-interface LoxCallable {
-    fun call(interpreter: Interpreter, args: List<LoxValue>): LoxValue
-    fun nArgs(): Int
-}
-
-class LoxFunction(private val declaration: FunctionDeclaration, private val closure: Environment) : LoxValue(),
-    LoxCallable {
-    override fun call(interpreter: Interpreter, args: List<LoxValue>): LoxValue {
-        val functionScope = Environment(closure)
-        declaration.params.forEachIndexed { index, token ->
-            functionScope.define(token.lexeme, args[index])
-        }
-        interpreter.visitBlock(declaration.body, functionScope)
-        return LoxNil()
-    }
-
-    override fun nArgs() = declaration.params.size
-
-    override fun toString() = "<fn ${declaration.name.lexeme}>"
-
-}
-
 class Environment(private val parent: Environment?) {
     private val values = mutableMapOf<String, LoxValue>()
 
@@ -148,6 +97,12 @@ class Interpreter {
                         visitExpr(statement.value)
                     }
                 )
+            }
+            is ClassStatement -> {
+                val methods = statement.methods.associate {
+                    it.name.lexeme to LoxFunction(it, environment)
+                }
+                environment.define(statement.name.lexeme, LoxClass(statement.name.lexeme, methods))
             }
         }
     }
@@ -277,17 +232,7 @@ class Interpreter {
                     else -> throw RuntimeException("unimplemented unary operator: ${expr.operator.type}")
                 }
             }
-            is Variable -> {
-                val depth = expr.resolutionDepth
-                if (depth == null) {
-                    globals.get(expr.name.lexeme) ?: throw RuntimeError(
-                        expr.name,
-                        "Undefined variable '${expr.name.lexeme}'."
-                    )
-                } else {
-                    environment.getAt(depth, expr.name)!!
-                }
-            }
+            is Variable -> resolveVariable(expr.name, expr.resolutionDepth)
             is Assign -> {
                 val value = visitExpr(expr.value)
                 val depth = expr.resolutionDepth
@@ -324,14 +269,38 @@ class Interpreter {
                     )
                 }
                 val args = expr.args.map(::visitExpr)
-                try {
-                    callee.call(this, args)
-                    return LoxNil()
-                } catch (returned: ReturnException) {
-                    returned.returnValue
-                }
+                return callee.call(this, args)
             }
+            is GetExpr -> {
+                val base = visitExpr(expr.base)
+                if (base !is LoxInstance) {
+                    throw RuntimeError(expr.getter, "can only access properties of class instances")
+                }
+                return base.get(expr.getter)
+            }
+            is SetExpr -> {
+                val base = visitExpr(expr.base)
+                val value = visitExpr(expr.value)
+                if (base !is LoxInstance) {
+                    throw RuntimeError(expr.getter, "can only access properties of class instances")
+                }
+                base.set(expr.getter, value)
+                return value
+            }
+            is This -> resolveVariable(expr.token, expr.resolutionDepth)
         }
+    }
+
+    private fun resolveVariable(variableToken: Token, depth: Int?): LoxValue {
+        return if (depth == null) {
+            globals.get(variableToken.lexeme) ?: throw RuntimeError(
+                variableToken,
+                "Undefined variable '${variableToken.lexeme}'."
+            )
+        } else {
+            environment.getAt(depth, variableToken)!!
+        }
+
     }
 
     companion object {
