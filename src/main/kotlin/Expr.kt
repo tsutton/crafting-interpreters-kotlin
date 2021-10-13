@@ -25,9 +25,9 @@ object ExprSexpPrinter {
                 val args = expr.args.joinToString(separator = " ", transform = ::visit)
                 "(call ${visit(expr.callee)} ${args})"
             }
-            is GetExpr -> TODO()
-            is SetExpr -> TODO()
-            is This -> TODO()
+            is GetExpr -> "(get ${visit(expr.base)} ${expr.getter.lexeme})"
+            is SetExpr -> "(set ${visit(expr.base)} ${expr.getter.lexeme} ${visit(expr.value)})"
+            is This -> "(this)"
         }
     }
 }

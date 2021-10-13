@@ -3,6 +3,12 @@ import java.util.*
 
 class ResolutionError(val line: Int, override val message: String?) : RuntimeException(message)
 
+enum class FunctionType {
+    Function,
+    Method,
+    Initializer,
+}
+
 class Resolver {
     // Having this be a map of booleans, and splitting declare/define as two functions instead of one
     // is towards handling the case
@@ -22,7 +28,7 @@ class Resolver {
     // The interpreter handles the globals itself.
     private val scopes: Stack<MutableMap<String, Boolean>> = Stack()
 
-    private var insideFunction = false
+    private var insideFunction: FunctionType? = null
     private var insideClass = false
 
     private fun beginScope() {
@@ -76,7 +82,7 @@ class Resolver {
             is FunctionDeclaration -> {
                 declare(stmt.name)
                 define(stmt.name)
-                resolveFunction(stmt)
+                resolveFunction(stmt, FunctionType.Function)
             }
             is Block -> {
                 beginScope()
@@ -95,8 +101,11 @@ class Resolver {
             is Expression -> visitExpr(stmt.expr)
             is Print -> visitExpr(stmt.expr)
             is Return -> {
-                if (!insideFunction) {
+                if (insideFunction == null) {
                     throw ResolutionError(stmt.returnToken.line, "can't return unless inside a function")
+                }
+                if (insideFunction == FunctionType.Initializer && stmt.value != null) {
+                    throw ResolutionError(stmt.returnToken.line, "can't return value from class init")
                 }
                 if (stmt.value != null) {
                     visitExpr(stmt.value)
@@ -114,7 +123,12 @@ class Resolver {
                 val originalInsideClass = insideClass
                 insideClass = true
                 for (method in stmt.methods) {
-                    resolveFunction(method)
+                    val functionType = if (method.name.lexeme == "init") {
+                        FunctionType.Initializer
+                    } else {
+                        FunctionType.Method
+                    }
+                    resolveFunction(method, functionType)
                 }
                 insideClass = originalInsideClass
                 endScope()
@@ -122,9 +136,9 @@ class Resolver {
         }
     }
 
-    private fun resolveFunction(declaration: FunctionDeclaration) {
+    private fun resolveFunction(declaration: FunctionDeclaration, functionType: FunctionType) {
         val originalInsideFunction = insideFunction
-        insideFunction = true
+        insideFunction = functionType
         beginScope()
         for (param in declaration.params) {
             declare(param)

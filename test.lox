@@ -2,13 +2,24 @@ class Cake {
   taste() {
      var adjective = "delicious";
      print "The " + this.flavor + " cake is " + adjective + "!";
+     return;
+     print "hello";
   }
 }
 
-fun func(){
-    return this;
+
+
+class Foo {
+  init() {
+    return 5;
+  }
 }
 
+class Bar {
+    init() {
+        this.thing = "hello";
+    }
+}
 var cake = Cake();
 cake.flavor = "German chocolate";
 cake.taste(); // Prints "The German chocolate cake is delicious!".

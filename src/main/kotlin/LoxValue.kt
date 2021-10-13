@@ -32,20 +32,29 @@ interface LoxCallable {
     fun nArgs(): Int
 }
 
-class LoxFunction(private val declaration: FunctionDeclaration, private val closure: Environment) : LoxValue(),
-    LoxCallable {
+class LoxFunction(
+    private val declaration: FunctionDeclaration,
+    private val closure: Environment,
+    private val isInitializer: Boolean = false // initializers have special behavior
+) : LoxValue(), LoxCallable {
     override fun call(interpreter: Interpreter, args: List<LoxValue>): LoxValue {
         val functionScope = Environment(closure)
         declaration.params.forEachIndexed { index, token ->
             functionScope.define(token.lexeme, args[index])
         }
-        try {
+        val returnValue: LoxValue = try {
             interpreter.visitBlock(declaration.body, functionScope)
+            // implicit return of nil if we didn't see a return statement
+            LoxNil()
         } catch (e: ReturnException) {
-            return e.returnValue
+            e.returnValue
         }
-        // implicit return of nil if we didn't see a return statement
-        return LoxNil()
+        return if (!isInitializer) {
+            returnValue
+        } else {
+            // resolver pass ensures that returnValue will be LoxNil here (can't return a value from init)
+            closure.getAt(0, "this")!!
+        }
     }
 
     override fun nArgs() = declaration.params.size
@@ -61,9 +70,17 @@ class LoxFunction(private val declaration: FunctionDeclaration, private val clos
 }
 
 class LoxClass(val name: String, private val methods: Map<String, LoxFunction>) : LoxValue(), LoxCallable {
-    override fun call(interpreter: Interpreter, args: List<LoxValue>) = LoxInstance(this)
+    override fun call(interpreter: Interpreter, args: List<LoxValue>): LoxInstance {
+        val instance = LoxInstance(this)
+        val initializer = getMethod("init") ?: return instance
+        initializer.bind(instance).call(interpreter, args)
+        return instance
+    }
 
-    override fun nArgs() = 0
+    override fun nArgs(): Int {
+        val initializer = getMethod("init") ?: return 0
+        return initializer.nArgs()
+    }
 
     override fun toString() = "<class ${name}>"
     override fun typeName() = "<class>"

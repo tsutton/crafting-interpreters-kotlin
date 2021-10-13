@@ -29,7 +29,7 @@ class Environment(private val parent: Environment?) {
         return ret
     }
 
-    fun getAt(depth: Int, name: Token) = ancestor(depth).values[name.lexeme]
+    fun getAt(depth: Int, name: String) = ancestor(depth).values[name]
     fun assignAt(depth: Int, name: Token, value: LoxValue) {
         ancestor(depth).values[name.lexeme] = value
     }
@@ -298,9 +298,8 @@ class Interpreter {
                 "Undefined variable '${variableToken.lexeme}'."
             )
         } else {
-            environment.getAt(depth, variableToken)!!
+            environment.getAt(depth, variableToken.lexeme)!!
         }
-
     }
 
     companion object {
