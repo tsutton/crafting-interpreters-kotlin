@@ -10,6 +10,7 @@ data class CallExpr(val callee: Expr, val args: List<Expr>, val closeParen: Toke
 data class GetExpr(val base: Expr, val getter: Token) : Expr()
 data class SetExpr(val base: Expr, val getter: Token, val value: Expr) : Expr()
 data class This(val token: Token, var resolutionDepth: Int? = null) : Expr()
+data class SuperExpr(val token: Token, val method: Token, var resolutionDepth: Int? = null) : Expr()
 
 object ExprSexpPrinter {
     fun visit(expr: Expr): String {
@@ -28,6 +29,7 @@ object ExprSexpPrinter {
             is GetExpr -> "(get ${visit(expr.base)} ${expr.getter.lexeme})"
             is SetExpr -> "(set ${visit(expr.base)} ${expr.getter.lexeme} ${visit(expr.value)})"
             is This -> "(this)"
+            is SuperExpr -> "(super.${expr.method.lexeme})"
         }
     }
 }

@@ -9,6 +9,11 @@ enum class FunctionType {
     Initializer,
 }
 
+enum class ClassKind {
+    BaseClass,
+    Subclass,
+}
+
 class Resolver {
     // Having this be a map of booleans, and splitting declare/define as two functions instead of one
     // is towards handling the case
@@ -29,7 +34,7 @@ class Resolver {
     private val scopes: Stack<MutableMap<String, Boolean>> = Stack()
 
     private var insideFunction: FunctionType? = null
-    private var insideClass = false
+    private var insideClass: ClassKind? = null
 
     private fun beginScope() {
         scopes.push(mutableMapOf())
@@ -118,10 +123,20 @@ class Resolver {
             is ClassStatement -> {
                 declare(stmt.name)
                 define(stmt.name)
+                if (stmt.superclass != null) {
+                    if (stmt.superclass.name.lexeme == stmt.name.lexeme) {
+                        throw ResolutionError(stmt.superclass.name.line, "class can't inherit from itself")
+                    }
+                    visitExpr(stmt.superclass)
+                    // it's convenient to put super into a separate scope here, it makes the mirrored Environments
+                    // in the interpreter easier
+                    beginScope()
+                    scopes.peek()["super"] = true
+                }
                 beginScope()
                 scopes.peek()["this"] = true
                 val originalInsideClass = insideClass
-                insideClass = true
+                insideClass = if (stmt.superclass != null) ClassKind.Subclass else ClassKind.BaseClass
                 for (method in stmt.methods) {
                     val functionType = if (method.name.lexeme == "init") {
                         FunctionType.Initializer
@@ -131,6 +146,9 @@ class Resolver {
                     resolveFunction(method, functionType)
                 }
                 insideClass = originalInsideClass
+                if (stmt.superclass != null) {
+                    endScope()
+                }
                 endScope()
             }
         }
@@ -192,10 +210,17 @@ class Resolver {
                 visitExpr(expr.value)
             }
             is This -> {
-                if (!insideClass) {
+                if (insideClass != null) {
                     throw ResolutionError(expr.token.line, "'this' is only available inside methods on classes.")
                 }
                 expr.resolutionDepth = depth(expr.token.lexeme)
+            }
+            is SuperExpr -> {
+                if (insideClass != ClassKind.Subclass) {
+                    throw ResolutionError(expr.token.line, "'super' is only available inside methods on subclasses.")
+                }
+
+                expr.resolutionDepth = depth("super")
             }
         }
     }

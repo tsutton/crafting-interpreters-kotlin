@@ -1,7 +1,7 @@
 data class RuntimeError(val token: Token, override val message: String) : RuntimeException(message)
 data class ReturnException(val returnValue: LoxValue) : RuntimeException()
 
-class Environment(private val parent: Environment?) {
+class Environment(internal val parent: Environment?) {
     private val values = mutableMapOf<String, LoxValue>()
 
     fun define(name: String, value: LoxValue) {
@@ -99,10 +99,27 @@ class Interpreter {
                 )
             }
             is ClassStatement -> {
+                var superclass: LoxClass? = null
+                if (statement.superclass != null) {
+                    val superclassUnchecked = visitExpr(statement.superclass)
+                    if (superclassUnchecked is LoxClass) {
+                        superclass = superclassUnchecked
+                    } else {
+                        throw RuntimeError(
+                            statement.superclass.name,
+                            "can only inherit from classes, got type ${superclassUnchecked.typeName()}"
+                        )
+                    }
+                    environment = Environment(environment)
+                    // we put "super" as the value of the superclass, but only long enough to set up the methods
+                    environment.define("super", superclass)
+                }
                 val methods = statement.methods.associate {
                     it.name.lexeme to LoxFunction(it, environment)
                 }
-                environment.define(statement.name.lexeme, LoxClass(statement.name.lexeme, methods))
+                if (superclass != null)
+                    environment = environment.parent!!
+                environment.define(statement.name.lexeme, LoxClass(statement.name.lexeme, methods, superclass))
             }
         }
     }
@@ -288,6 +305,15 @@ class Interpreter {
                 return value
             }
             is This -> resolveVariable(expr.token, expr.resolutionDepth)
+            is SuperExpr -> {
+                val superclass = environment.getAt(expr.resolutionDepth!!, "super")
+                val thisValue = environment.getAt(expr.resolutionDepth!! - 1, "this")
+                (superclass as LoxClass).getMethod(expr.method.lexeme)?.bind(thisValue as LoxInstance)
+                    ?: throw RuntimeError(
+                        expr.token,
+                        "method '${expr.method}' not found on super"
+                    )
+            }
         }
     }
 

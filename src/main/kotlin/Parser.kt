@@ -49,13 +49,19 @@ class Parser(private val tokens: List<Token>) {
 
     private fun classDeclaration(): ClassStatement {
         val name = consume(TokenType.IDENTIFIER, "expecting identifier after keyword 'class'")
+        val superclass: Variable? = if (match(TokenType.LESS)) {
+            consume(TokenType.IDENTIFIER, "expecting class name (identifier) as super class after '<'")
+            Variable(previous())
+        } else {
+            null
+        }
         consume(TokenType.LEFT_BRACE, "expecting '{' after class name")
         val methods = mutableListOf<FunctionDeclaration>()
         while (!check(TokenType.RIGHT_BRACE) && !isAtEnd()) {
             methods.add(functionDeclaration("method"))
         }
         consume(TokenType.RIGHT_BRACE, "expecting '}' at end of class")
-        return ClassStatement(name, methods)
+        return ClassStatement(name, superclass, methods)
     }
 
     private fun functionDeclaration(kind: String): FunctionDeclaration {
@@ -289,10 +295,10 @@ class Parser(private val tokens: List<Token>) {
     private fun call(): Expr {
         var expr = primary()
         while (true) {
-            if (match(TokenType.LEFT_PAREN)) {
-                expr = extendCall(expr)
+            expr = if (match(TokenType.LEFT_PAREN)) {
+                extendCall(expr)
             } else if (match(TokenType.DOT)) {
-                expr = GetExpr(
+                GetExpr(
                     expr,
                     consume(TokenType.IDENTIFIER, "expecting identifier for property access after '.'")
                 )
@@ -327,6 +333,15 @@ class Parser(private val tokens: List<Token>) {
         if (match(TokenType.TRUE)) return Literal(LoxBoolean(true))
         if (match(TokenType.NIL)) return Literal(LoxNil())
         if (match(TokenType.THIS)) return This(previous())
+        if (match(TokenType.SUPER)) {
+            val superToken = previous()
+            consume(TokenType.DOT, "super can only be used for method access, must be followed by '.'")
+            val methodToken = consume(
+                TokenType.IDENTIFIER,
+                "expecting identifier after 'super.'"
+            )
+            return SuperExpr(superToken, methodToken)
+        }
 
         if (match(TokenType.NUMBER, TokenType.STRING)) {
             return if (previous().type == TokenType.NUMBER) {

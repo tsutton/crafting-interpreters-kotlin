@@ -7,4 +7,4 @@ data class If(val predicate: Expr, val ifTrue: Stmt, val ifFalse: Stmt?) : Stmt(
 data class While(val predicate: Expr, val body: Stmt) : Stmt()
 data class FunctionDeclaration(val name: Token, val params: List<Token>, val body: List<Stmt>) : Stmt()
 data class Return(val returnToken: Token, val value: Expr?) : Stmt()
-data class ClassStatement(val name: Token, val methods: List<FunctionDeclaration>): Stmt()
+data class ClassStatement(val name: Token, val superclass: Variable?, val methods: List<FunctionDeclaration>) : Stmt()

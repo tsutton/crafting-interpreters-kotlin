@@ -1,25 +1,24 @@
-class Cake {
-  taste() {
-     var adjective = "delicious";
-     print "The " + this.flavor + " cake is " + adjective + "!";
-     return;
-     print "hello";
+class A {
+  method() {
+    print "A method";
+  }
+
+  // uncommenting this results in an error, as desired.
+  // meth() {
+  //   super.thing();
+  // }
+}
+
+class B < A {
+  method() {
+    print "B method";
+  }
+
+  test() {
+    super.method();
   }
 }
 
+class C < B {}
 
-
-class Foo {
-  init() {
-    return 5;
-  }
-}
-
-class Bar {
-    init() {
-        this.thing = "hello";
-    }
-}
-var cake = Cake();
-cake.flavor = "German chocolate";
-cake.taste(); // Prints "The German chocolate cake is delicious!".
+C().test();

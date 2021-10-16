@@ -69,7 +69,11 @@ class LoxFunction(
     }
 }
 
-class LoxClass(val name: String, private val methods: Map<String, LoxFunction>) : LoxValue(), LoxCallable {
+class LoxClass(
+    val name: String,
+    private val methods: Map<String, LoxFunction>,
+    private val superclass: LoxClass? = null
+) : LoxValue(), LoxCallable {
     override fun call(interpreter: Interpreter, args: List<LoxValue>): LoxInstance {
         val instance = LoxInstance(this)
         val initializer = getMethod("init") ?: return instance
@@ -85,7 +89,11 @@ class LoxClass(val name: String, private val methods: Map<String, LoxFunction>) 
     override fun toString() = "<class ${name}>"
     override fun typeName() = "<class>"
 
-    fun getMethod(name: String) = methods[name]
+    fun getMethod(name: String): LoxFunction? {
+        if (methods[name] != null)
+            return methods[name]
+        return superclass?.getMethod(name)
+    }
 }
 
 class LoxInstance(private val type: LoxClass) : LoxValue() {
